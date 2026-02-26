@@ -1,0 +1,109 @@
+steps:
+  # Deploy researcher agent
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy-researcher
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - researcher
+      - --source=agents/researcher
+      - --region=$_REGION
+      - --no-allow-unauthenticated
+      - --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID
+      - --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=true
+      - --labels=dev-tutorial=prod-ready-1
+
+  # Deploy content-builder agent
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy-content-builder
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - content-builder
+      - --source=agents/content_builder
+      - --region=$_REGION
+      - --no-allow-unauthenticated
+      - --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID
+      - --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=true
+      - --labels=dev-tutorial=prod-ready-1
+
+  # Deploy judge agent
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy-judge
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - judge
+      - --source=agents/judge
+      - --region=$_REGION
+      - --no-allow-unauthenticated
+      - --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID
+      - --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=true
+      - --labels=dev-tutorial=prod-ready-1
+
+  # Get service URLs
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: get-urls
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        RESEARCHER_URL=$(gcloud run services describe researcher --region=$_REGION --format='value(status.url)')
+        JUDGE_URL=$(gcloud run services describe judge --region=$_REGION --format='value(status.url)')
+        CONTENT_BUILDER_URL=$(gcloud run services describe content-builder --region=$_REGION --format='value(status.url)')
+        echo "RESEARCHER_URL=$${RESEARCHER_URL}" > /workspace/urls.env
+        echo "JUDGE_URL=$${JUDGE_URL}" >> /workspace/urls.env
+        echo "CONTENT_BUILDER_URL=$${CONTENT_BUILDER_URL}" >> /workspace/urls.env
+    waitFor:
+      - deploy-researcher
+      - deploy-judge
+      - deploy-content-builder
+
+  # Deploy orchestrator agent
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy-orchestrator
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        source /workspace/urls.env
+        gcloud run deploy orchestrator \
+          --source=agents/orchestrator \
+          --region=$_REGION \
+          --no-allow-unauthenticated \
+          --set-env-vars=RESEARCHER_AGENT_CARD_URL=$${RESEARCHER_URL}/a2a/agent/.well-known/agent-card.json \
+          --set-env-vars=JUDGE_AGENT_CARD_URL=$${JUDGE_URL}/a2a/agent/.well-known/agent-card.json \
+          --set-env-vars=CONTENT_BUILDER_AGENT_CARD_URL=$${CONTENT_BUILDER_URL}/a2a/agent/.well-known/agent-card.json \
+          --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID \
+          --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=true \
+          --labels=dev-tutorial=prod-ready-1
+    waitFor:
+      - get-urls
+
+  # Deploy frontend app
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy-frontend
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        ORCHESTRATOR_URL=$(gcloud run services describe orchestrator --region=$_REGION --format='value(status.url)')
+        gcloud run deploy course-creator \
+          --source=app \
+          --region=$_REGION \
+          --allow-unauthenticated \
+          --set-env-vars=AGENT_SERVER_URL=$${ORCHESTRATOR_URL} \
+          --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID \
+          --labels=dev-tutorial=prod-ready-1
+    waitFor:
+      - deploy-orchestrator
+
+substitutions:
+  _REGION: us-central1
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitution_option: ALLOW_LOOSE
