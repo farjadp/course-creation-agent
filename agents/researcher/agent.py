@@ -4,7 +4,14 @@ from google.adk.tools.google_search_tool import google_search
 
 MODEL = "gemini-2.5-pro"
 
-# TODO: Define the Researcher Agent
-# The researcher should be an Agent that uses the google_search tool
-# and follows the instructions to gather information.
+root_agent = Agent(
+    name="researcher",
+    model=MODEL,
+    tools=[google_search],
+    instruction=(
+        "You are a research assistant. Use the google_search tool to gather "
+        "accurate and up-to-date information in response to user queries. "
+        "Summarize your findings clearly and cite your sources."
+    ),
+)
 

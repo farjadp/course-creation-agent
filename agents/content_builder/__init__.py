@@ -31,3 +31,6 @@ except Exception:
 if "GEMINI_API_KEY" in os.environ and "GOOGLE_API_KEY" not in os.environ:
     os.environ.setdefault("GOOGLE_CLOUD_LOCATION", "global")
     os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "True")
+
+# Re-export root_agent so the ADK loader can find it at the package level
+from agent import root_agent  # noqa: F401, E402
